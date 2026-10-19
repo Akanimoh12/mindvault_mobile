@@ -148,6 +148,22 @@ export function normalizeError(error: unknown): NormalizedError {
   }
 }
 
+let errorLog: Array<{ context: string; error: NormalizedError; timestamp: string }> = [];
+
+const MAX_LOG_ENTRIES = 100;
+
+function addToErrorLog(context: string, error: NormalizedError): void {
+  errorLog.push({
+    context: redactSensitiveValues(context),
+    error,
+    timestamp: new Date().toISOString(),
+  });
+
+  if (errorLog.length > MAX_LOG_ENTRIES) {
+    errorLog.shift();
+  }
+}
+
 /**
  * Normalize and log an error, tagged with the context it occurred in.
  * Only writes to the console in development (`__DEV__`); a no-op in production.
@@ -157,6 +173,8 @@ export function logError(context: string, error: unknown): NormalizedError {
   const normalized = normalizeError(error);
   const safeContext = redactSensitiveValues(context);
 
+  addToErrorLog(safeContext, normalized);
+
   if (__DEV__) {
     console.error(`[MindVault] ${safeContext}: ${normalized.message}`);
     if (normalized.stack) {
@@ -165,4 +183,17 @@ export function logError(context: string, error: unknown): NormalizedError {
   }
 
   return normalized;
+}
+
+export function getErrorLog(): string {
+  return errorLog
+    .map(
+      (entry) =>
+        `[${entry.timestamp}] ${entry.context}: ${entry.error.message}\n${entry.error.stack || ""}`
+    )
+    .join("\n\n");
+}
+
+export function clearErrorLog(): void {
+  errorLog = [];
 }

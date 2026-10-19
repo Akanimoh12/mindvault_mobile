@@ -10,13 +10,13 @@ import { SettingsScreen } from "./SettingsScreen";
 import { getDefaultApiBaseUrl } from "../api/apiSettings";
 import { RootNavigator, type RootStackParamList } from "../navigation";
 import { ThemeProvider } from "../theme/ThemeProvider";
+import { renderWithProviders, setupFetchMock } from "../test-utils";
 
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
   useNavigation: () => ({ navigate: jest.fn() }),
 }));
 
-// Only the registered route names matter here, not the initial screen's UI.
 jest.mock("./CatalogScreen", () => ({ CatalogScreen: () => null }));
 
 jest.mock("react-native-safe-area-context", () => {
@@ -41,13 +41,7 @@ function setDev(value: boolean) {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
-  global.fetch = jest.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: async () => [],
-    text: async () => "[]",
-    headers: { get: () => null },
-  }) as unknown as typeof global.fetch;
+  setupFetchMock();
 });
 
 afterEach(() => {
@@ -55,11 +49,7 @@ afterEach(() => {
 });
 
 async function renderSettings() {
-  const screen = render(
-    <ThemeProvider>
-      <SettingsScreen />
-    </ThemeProvider>
-  );
+  const screen = renderWithProviders(<SettingsScreen />);
   await screen.findByDisplayValue(getDefaultApiBaseUrl());
   return screen;
 }

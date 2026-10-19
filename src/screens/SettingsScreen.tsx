@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -21,6 +22,12 @@ import {
   validateApiBaseUrl,
 } from "../api/apiSettings";
 import { initializeApiBaseUrl } from "../api/resources";
+import {
+  collectDiagnostics,
+  exportDiagnosticsAsJson,
+  formatDiagnosticsAsText,
+} from "../services/diagnostics";
+import { getErrorLog } from "../utils/errorLogger";
 
 export function SettingsScreen() {
   const { colors, shared } = useAppTheme();
@@ -84,6 +91,24 @@ export function SettingsScreen() {
   const isDirty = apiUrl.trim() !== savedUrl;
   const isDefault =
     apiUrl.trim() === getDefaultApiBaseUrl() && savedUrl === getDefaultApiBaseUrl();
+
+  const handleExportDiagnostics = async () => {
+    try {
+      const diagnostics = await collectDiagnostics();
+      const diagnosticsText = formatDiagnosticsAsText(diagnostics);
+      const errorLog = getErrorLog();
+      const fullReport = errorLog
+        ? `${diagnosticsText}\n\n=== Error Log ===\n${errorLog}`
+        : diagnosticsText;
+
+      await Share.share({
+        message: fullReport,
+        title: "MindVault Diagnostics",
+      });
+    } catch {
+      Alert.alert("Error", "Failed to export diagnostics");
+    }
+  };
 
   return (
     <SafeAreaView style={shared.screen}>
@@ -196,6 +221,23 @@ export function SettingsScreen() {
             accessibilityLabel="Open publisher resources"
           >
             <Text style={[shared.buttonText, { color: "#ffffff" }]}>Open Publisher Resources</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.infoCard, { backgroundColor: colors.neutralBg, marginTop: 32 }]}>
+          <Text style={[styles.title, { fontSize: 16, color: colors.text, marginBottom: 8 }]}>
+            Support
+          </Text>
+          <Text style={[styles.infoText, { color: colors.textMuted, marginBottom: 16 }]}>
+            Export diagnostic information to help us troubleshoot issues.
+          </Text>
+          <TouchableOpacity
+            style={[shared.button, { backgroundColor: colors.primary }]}
+            onPress={handleExportDiagnostics}
+            accessibilityRole="button"
+            accessibilityLabel="Export diagnostics"
+          >
+            <Text style={[shared.buttonText, { color: "#ffffff" }]}>Export Diagnostics</Text>
           </TouchableOpacity>
         </View>
 

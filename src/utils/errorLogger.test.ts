@@ -1,4 +1,10 @@
-import { extractApiErrorMessageFromBody, logError, normalizeError } from "./errorLogger";
+import {
+  extractApiErrorMessageFromBody,
+  logError,
+  normalizeError,
+  getErrorLog,
+  clearErrorLog,
+} from "./errorLogger";
 
 describe("extractApiErrorMessageFromBody", () => {
   it("preserves common structured server messages", () => {
@@ -94,5 +100,44 @@ describe("extractApiErrorMessageFromBody", () => {
     expect(extractApiErrorMessageFromBody("{not json", "Fallback", "application/json")).toBe(
       "Fallback"
     );
+  });
+});
+
+describe("error log tracking", () => {
+  beforeEach(() => {
+    clearErrorLog();
+  });
+
+  it("tracks logged errors", () => {
+    const consoleErrorSpy = jest.spyOn(globalThis.console, "error").mockImplementation(() => {});
+
+    try {
+      logError("test context 1", new Error("Error 1"));
+      logError("test context 2", new Error("Error 2"));
+
+      const log = getErrorLog();
+      expect(log).toContain("test context 1");
+      expect(log).toContain("Error 1");
+      expect(log).toContain("test context 2");
+      expect(log).toContain("Error 2");
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("clears the error log", () => {
+    const consoleErrorSpy = jest.spyOn(globalThis.console, "error").mockImplementation(() => {});
+
+    try {
+      logError("test context", new Error("Test error"));
+      let log = getErrorLog();
+      expect(log).toContain("test context");
+
+      clearErrorLog();
+      log = getErrorLog();
+      expect(log).toBe("");
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

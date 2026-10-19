@@ -6,6 +6,7 @@ import { ScannerScreen } from "./screens/ScannerScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { DevSignerScreen } from "./screens/DevSignerScreen";
 import { PublisherResourcesScreen } from "./screens/PublisherResourcesScreen";
+import { PublisherProfileScreen } from "./screens/PublisherProfileScreen";
 
 export type RootStackParamList = {
   Catalog: undefined;
@@ -14,6 +15,7 @@ export type RootStackParamList = {
   Settings: undefined;
   DevSigner: undefined;
   PublisherResources: undefined;
+  PublisherProfile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -44,6 +46,11 @@ export function RootNavigator() {
         name="PublisherResources"
         component={PublisherResourcesScreen}
         options={{ title: "Publisher Resources" }}
+      />
+      <Stack.Screen
+        name="PublisherProfile"
+        component={PublisherProfileScreen}
+        options={{ title: "Publisher Profile" }}
       />
     </Stack.Navigator>
   );

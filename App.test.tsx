@@ -1,13 +1,12 @@
 import React from "react";
 import { render, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { setupFetchMock } from "./src/test-utils";
 
 import App from "./App";
 
 const SAVED_URL = "http://192.168.1.20:4021";
 
-// Captures the props App hands to NavigationContainer so the deep-linking
-// config can be asserted.
 let mockLinkingProps: any;
 jest.mock("@react-navigation/native", () => {
   const actual = jest.requireActual("@react-navigation/native");
@@ -38,14 +37,7 @@ let fetchMock: jest.Mock;
 beforeEach(async () => {
   await AsyncStorage.clear();
   mockLinkingProps = undefined;
-  fetchMock = jest.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: async () => [],
-    text: async () => "[]",
-    headers: { get: () => "application/json" },
-  });
-  global.fetch = fetchMock as unknown as typeof global.fetch;
+  fetchMock = setupFetchMock();
 });
 
 afterEach(() => {

@@ -105,10 +105,24 @@ npm start
 
 Then press `i` for iOS simulator, `a` for Android emulator, or scan the QR code with Expo Go.
 
+## Testing
+
+See the [testing guide](docs/TESTING.md) for writing tests, mocking patterns, and test utilities.
+
+```bash
+npm test
+npm test -- --watch
+npm test -- --coverage
+```
+
 ## Build and Release
 
 See the [release guide](docs/RELEASE.md) for EAS build profiles, store submission,
 and secret-handling guidance.
+
+## Native Project Generation
+
+The `android/` and `ios/` directories are generated at build time. See the [native guide](docs/NATIVE.md) for details.
 
 ## Available npm scripts
 
@@ -119,6 +133,7 @@ and secret-handling guidance.
 | `npm run ios`       | Run the app on an iOS device or simulator using Expo's development build    |
 | `npm run web`       | Run the app in a web browser                                                |
 | `npm run typecheck` | Run TypeScript type checking without emitting files                         |
+| `npm test`          | Run tests with Jest                                                         |
 
 ## Related
 

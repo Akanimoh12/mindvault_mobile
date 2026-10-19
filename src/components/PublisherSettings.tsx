@@ -16,12 +16,14 @@ interface PublisherSettingsProps {
   visible: boolean;
   onClose: () => void;
   onApiKeySet: () => void;
+  onViewProfile?: () => void;
 }
 
 export function PublisherSettings({
   visible,
   onClose,
   onApiKeySet,
+  onViewProfile,
 }: PublisherSettingsProps) {
   const { colors, shared, typography } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -115,19 +117,34 @@ export function PublisherSettings({
           ) : null}
 
           {hasKey ? (
-            <Pressable
-              onPress={handleLogout}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.button,
-                styles.logoutButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.logoutButtonText}>
-                {loading ? "Clearing..." : "Clear API Key"}
-              </Text>
-            </Pressable>
+            <>
+              <Pressable
+                onPress={handleLogout}
+                disabled={loading}
+                style={({ pressed }) => [
+                  styles.button,
+                  styles.logoutButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.logoutButtonText}>
+                  {loading ? "Clearing..." : "Clear API Key"}
+                </Text>
+              </Pressable>
+              {onViewProfile ? (
+                <Pressable
+                  onPress={onViewProfile}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.profileButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.profileButtonText}>View Profile</Text>
+                </Pressable>
+              ) : null}
+            </>
           ) : (
             <Pressable
               onPress={handleSave}
@@ -219,6 +236,14 @@ function createStyles(colors: ThemeColors) {
     },
     logoutButtonText: {
       color: colors.onDanger,
+      fontWeight: "600",
+      fontSize: 16,
+    },
+    profileButton: {
+      backgroundColor: colors.primary,
+    },
+    profileButtonText: {
+      color: colors.onPrimary,
       fontWeight: "600",
       fontSize: 16,
     },
