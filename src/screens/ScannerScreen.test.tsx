@@ -13,9 +13,9 @@ jest.mock("expo-clipboard", () => ({
   getStringAsync: jest.fn().mockResolvedValue(""),
 }));
 
-jest.mock("react-native-safe-area-context", () => ({
-  SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
-}));
+jest.mock("react-native-safe-area-context", () =>
+  require("../test-utils").safeAreaMock()
+);
 
 describe("ScannerScreen paste flow", () => {
   const navigation = {

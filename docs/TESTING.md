@@ -69,60 +69,31 @@ it("fetches data", async () => {
 });
 ```
 
-### `mockAsyncStorage()`
+### `safeAreaMock()` and `navigationMock()`
 
-Mocks `@react-native-async-storage/async-storage` with an in-memory store:
-
-```typescript
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { mockAsyncStorage } from "../test-utils";
-
-beforeEach(() => {
-  mockAsyncStorage();
-});
-
-it("persists data", async () => {
-  await AsyncStorage.setItem("key", "value");
-  const value = await AsyncStorage.getItem("key");
-  expect(value).toBe("value");
-});
-```
-
-### `setupSafeAreaMock()`
-
-Mocks `react-native-safe-area-context`:
+`jest.mock()` only works at the top level of a test file (Jest hoists it above
+the imports), so a helper that calls `jest.mock` inside a function has no
+effect. These helpers are **module factories** instead: pass them to a
+top-level `jest.mock`, requiring the module inside the factory.
 
 ```typescript
-import { setupSafeAreaMock } from "../test-utils";
+jest.mock("react-native-safe-area-context", () =>
+  require("../test-utils").safeAreaMock()
+);
 
-beforeEach(() => {
-  setupSafeAreaMock();
-});
+// Variables used inside a mock factory must be named mock…
+const mockNavigate = jest.fn();
+jest.mock("@react-navigation/native", () =>
+  require("../test-utils").navigationMock({ navigate: mockNavigate })
+);
 ```
 
-### `setupExpoConstants()`
+### AsyncStorage
 
-Mocks `expo-constants`:
-
-```typescript
-import { setupExpoConstants } from "../test-utils";
-
-beforeEach(() => {
-  setupExpoConstants();
-});
-```
-
-### `setupNavigationMock()`
-
-Mocks `@react-navigation/native`:
-
-```typescript
-import { setupNavigationMock } from "../test-utils";
-
-beforeEach(() => {
-  setupNavigationMock();
-});
-```
+You don't need to mock it. `jest.setup.js` installs the official
+`@react-native-async-storage/async-storage` Jest mock for every test, backed by
+an in-memory store. Call `await AsyncStorage.clear()` in `beforeEach` to start
+clean.
 
 ## Mocking Patterns
 
