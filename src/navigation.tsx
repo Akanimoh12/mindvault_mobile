@@ -1,4 +1,9 @@
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { Pressable, Text } from "react-native";
+import { useNavigation, useTheme } from "@react-navigation/native";
+import {
+  createNativeStackNavigator,
+  type NativeStackNavigationProp,
+} from "@react-navigation/native-stack";
 
 import { CatalogScreen } from "./screens/CatalogScreen";
 import { ResourceDetailScreen } from "./screens/ResourceDetailScreen";
@@ -19,6 +24,22 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+/** Header button on Publisher Resources that opens the publisher's profile. */
+function PublisherProfileButton() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      onPress={() => navigation.navigate("PublisherProfile")}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel="Publisher profile"
+    >
+      <Text style={{ color: colors.primary, fontWeight: "600" }}>Profile</Text>
+    </Pressable>
+  );
+}
 
 export function RootNavigator() {
   return (
@@ -45,7 +66,7 @@ export function RootNavigator() {
       <Stack.Screen
         name="PublisherResources"
         component={PublisherResourcesScreen}
-        options={{ title: "Publisher Resources" }}
+        options={{ title: "Publisher Resources", headerRight: PublisherProfileButton }}
       />
       <Stack.Screen
         name="PublisherProfile"

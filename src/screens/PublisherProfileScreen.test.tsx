@@ -1,119 +1,115 @@
 import React from "react";
-import { render, waitFor, fireEvent } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
+
 import { PublisherProfileScreen } from "./PublisherProfileScreen";
-import { getPublisherProfile } from "../api/publishers";
+import { fetchMe } from "../api/publishers";
+import { clearApiKey, storeApiKey } from "../services/secureStorage";
 import { ThemeProvider } from "../theme/ThemeProvider";
 
-jest.mock("../api/publishers");
-jest.mock("react-native-safe-area-context", () => {
-  const inset = { top: 0, bottom: 0, left: 0, right: 0 };
-  return {
-    SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
-    useSafeAreaInsets: () => inset,
-  };
+const mockGoBack = jest.fn();
+
+jest.mock("../api/publishers", () => ({ fetchMe: jest.fn() }));
+jest.mock("../services/secureStorage", () => ({
+  storeApiKey: jest.fn(),
+  clearApiKey: jest.fn(),
+}));
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ goBack: mockGoBack }),
+}));
+jest.mock("react-native-safe-area-context", () => ({
+  SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+const mockFetchMe = fetchMe as jest.MockedFunction<typeof fetchMe>;
+const mockStoreApiKey = storeApiKey as jest.MockedFunction<typeof storeApiKey>;
+const mockClearApiKey = clearApiKey as jest.MockedFunction<typeof clearApiKey>;
+
+const profile = {
+  id: "pub-123",
+  name: "Test Publisher",
+  email: "test@example.com",
+  walletAddress: "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7",
+  createdAt: "2024-01-01T00:00:00Z",
+};
+
+async function renderScreen() {
+  const screen = render(
+    <ThemeProvider>
+      <PublisherProfileScreen />
+    </ThemeProvider>
+  );
+  await act(async () => {});
+  return screen;
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockStoreApiKey.mockResolvedValue(undefined);
+  mockClearApiKey.mockResolvedValue(undefined);
 });
 
-const mockGetPublisherProfile = getPublisherProfile as jest.MockedFunction<
-  typeof getPublisherProfile
->;
+it("shows the publisher's name, wallet, email and created date", async () => {
+  mockFetchMe.mockResolvedValue(profile);
+  const screen = await renderScreen();
 
-describe("PublisherProfileScreen", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  expect(screen.getByText("Test Publisher")).toBeTruthy();
+  expect(screen.getByText(profile.walletAddress)).toBeTruthy();
+  expect(screen.getByText("test@example.com")).toBeTruthy();
+  expect(screen.getByText("Created")).toBeTruthy();
+});
+
+it("shows the error and retries", async () => {
+  mockFetchMe.mockRejectedValueOnce(new Error("Unauthorized: Invalid API key"));
+  mockFetchMe.mockResolvedValueOnce(profile);
+  const screen = await renderScreen();
+
+  expect(screen.getByText("Unauthorized: Invalid API key")).toBeTruthy();
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText("Retry loading profile"));
+  });
+  expect(screen.getByText("Test Publisher")).toBeTruthy();
+});
+
+it("validates a new key against the server before storing it", async () => {
+  mockFetchMe.mockResolvedValueOnce(profile);
+  const screen = await renderScreen();
+  mockFetchMe.mockResolvedValueOnce({ ...profile, name: "Other Publisher" });
+
+  fireEvent.changeText(screen.getByLabelText("New API key"), "  new-key  ");
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText("Replace API key"));
   });
 
-  it("displays the publisher profile when loaded", async () => {
-    const mockProfile = {
-      id: "pub-123",
-      name: "Test Publisher",
-      email: "test@example.com",
-      createdAt: "2024-01-01T00:00:00Z",
-    };
+  expect(mockFetchMe).toHaveBeenLastCalledWith("new-key");
+  expect(mockStoreApiKey).toHaveBeenCalledWith("new-key");
+  expect(screen.getByText("Other Publisher")).toBeTruthy();
+  expect(screen.getByText("API key replaced.")).toBeTruthy();
+});
 
-    mockGetPublisherProfile.mockResolvedValue(mockProfile);
+it("keeps the current key when the new one is rejected", async () => {
+  mockFetchMe.mockResolvedValueOnce(profile);
+  const screen = await renderScreen();
+  mockFetchMe.mockRejectedValueOnce(new Error("Unauthorized: Invalid API key"));
 
-    const { getByText } = render(
-      <ThemeProvider>
-        <PublisherProfileScreen onClose={jest.fn()} />
-      </ThemeProvider>
-    );
-
-    await waitFor(() => {
-      expect(getByText("Test Publisher")).toBeTruthy();
-      expect(getByText("test@example.com")).toBeTruthy();
-      expect(getByText("pub-123")).toBeTruthy();
-    });
+  fireEvent.changeText(screen.getByLabelText("New API key"), "typo-key");
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText("Replace API key"));
   });
 
-  it("displays an error when profile fetch fails", async () => {
-    mockGetPublisherProfile.mockRejectedValue(new Error("Unauthorized"));
+  expect(mockStoreApiKey).not.toHaveBeenCalled();
+  expect(screen.getByText("Unauthorized: Invalid API key")).toBeTruthy();
+  expect(screen.getByText("Test Publisher")).toBeTruthy();
+});
 
-    const { getByText } = render(
-      <ThemeProvider>
-        <PublisherProfileScreen onClose={jest.fn()} />
-      </ThemeProvider>
-    );
+it("logs out by wiping the stored key and leaving the screen", async () => {
+  mockFetchMe.mockResolvedValue(profile);
+  const screen = await renderScreen();
 
-    await waitFor(() => {
-      expect(getByText("Unauthorized")).toBeTruthy();
-    });
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText("Log out"));
   });
 
-  it("retries loading the profile when retry button is pressed", async () => {
-    mockGetPublisherProfile.mockRejectedValueOnce(new Error("Network error"));
-
-    const mockProfile = {
-      id: "pub-123",
-      name: "Test Publisher",
-      email: "test@example.com",
-      createdAt: "2024-01-01T00:00:00Z",
-    };
-
-    mockGetPublisherProfile.mockResolvedValueOnce(mockProfile);
-
-    const { getByText, queryByText } = render(
-      <ThemeProvider>
-        <PublisherProfileScreen onClose={jest.fn()} />
-      </ThemeProvider>
-    );
-
-    await waitFor(() => {
-      expect(getByText("Network error")).toBeTruthy();
-    });
-
-    const retryButton = getByText("Retry");
-    fireEvent.press(retryButton);
-
-    await waitFor(() => {
-      expect(queryByText("Network error")).toBeNull();
-      expect(getByText("Test Publisher")).toBeTruthy();
-    });
-  });
-
-  it("calls onClose when close button is pressed", async () => {
-    const mockProfile = {
-      id: "pub-123",
-      name: "Test Publisher",
-      email: "test@example.com",
-      createdAt: "2024-01-01T00:00:00Z",
-    };
-
-    mockGetPublisherProfile.mockResolvedValue(mockProfile);
-    const onClose = jest.fn();
-
-    const { getByText } = render(
-      <ThemeProvider>
-        <PublisherProfileScreen onClose={onClose} />
-      </ThemeProvider>
-    );
-
-    await waitFor(() => {
-      expect(getByText("Test Publisher")).toBeTruthy();
-    });
-
-    const closeButton = getByText("Close");
-    fireEvent.press(closeButton);
-
-    expect(onClose).toHaveBeenCalled();
-  });
+  expect(mockClearApiKey).toHaveBeenCalledTimes(1);
+  expect(mockGoBack).toHaveBeenCalledTimes(1);
 });
