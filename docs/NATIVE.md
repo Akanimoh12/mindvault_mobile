@@ -11,40 +11,49 @@ The `android/` and `ios/` directories are generated at build time from `app.json
 
 ## Building Locally
 
-When you need to build for iOS or Android, the native projects are generated automatically:
+Most day-to-day work needs no native folders at all:
 
 ```bash
-# For iOS development
-eas build --platform ios --local
+npx expo start            # Expo Go or a development build
+```
 
-# For Android development
-eas build --platform android --local
+To build and run native code locally, generate the projects from `app.json`,
+then run them. Generated folders are gitignored; regenerate rather than edit them.
 
-# For Expo Go (fastest for development)
-npx expo start
+```bash
+npx expo prebuild --clean          # (re)generate android/ and ios/ from app.json
+npx expo run:android               # build and run on an emulator or device
+npx expo run:ios                   # macOS with Xcode only
+```
+
+`--clean` deletes and regenerates the folders, so a stale native project never
+drifts from the config. Release builds go through EAS, which runs prebuild for
+you (see [RELEASE.md](RELEASE.md)):
+
+```bash
+npx eas-cli build --profile preview --platform android
 ```
 
 ## Configuration
 
-All native project settings are configured through:
+All native settings come from:
 
-1. **`app.json`** — App metadata, name, version, plugins
-2. **`eas.json`** — Build profiles, app signing, distribution
-3. **Expo Plugins** — Individual package configurations (e.g., `expo-build-properties`, `@react-native-community/cli-platform-android`)
+1. **`app.json`** (and `app.config.js`): name, version, icons, splash, permissions, plugins and `updates`.
+2. **`eas.json`**: build profiles, channels and distribution.
+3. **Config plugins** listed in `app.json` `plugins`, e.g. `expo-camera` for the camera permission text.
 
-## Modifying Native Code
+## Changing native configuration
 
-If you need to add native code or modify native configuration:
+Never edit `android/` or `ios/` directly: the next `prebuild --clean` or EAS
+build discards the change.
 
-1. Edit `app.json` or use Expo plugins to configure the native layer
-2. Rebuild locally with `eas build --local`
-3. Test in the simulator or on a device
+1. Change `app.json`, or add a plugin's options there.
+2. Run `npx expo prebuild --clean` and check the generated result.
+3. Build and test with `npx expo run:android` / `run:ios`.
 
-If a plugin doesn't support what you need, consider:
-
-- Opening an issue with the Expo team or the plugin maintainer
-- Using a custom Expo config plugin
-- Ejecting from Expo (not recommended for this project)
+If no existing option or plugin covers what you need, write a small local
+[config plugin](https://docs.expo.dev/config-plugins/introduction/) and add it
+to `plugins`.
 
 ## Reference
 
