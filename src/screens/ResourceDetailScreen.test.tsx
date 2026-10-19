@@ -4,6 +4,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { ActivityIndicator } from "react-native";
 
 import { fetchResource, ResourceFetchError } from "../api/resources";
+import { fetchVerification, type VerificationDetails } from "../api/verification";
 import { shareResource } from "../utils/shareResource";
 import { openExternalUrl } from "../utils/stellarExpert";
 import { ResourceDetailScreen } from "./ResourceDetailScreen";
@@ -12,6 +13,10 @@ jest.mock("../api/resources", () => {
   const actual = jest.requireActual("../api/resources");
   return { ...actual, fetchResource: jest.fn() };
 });
+jest.mock("../api/verification", () => ({
+  ...jest.requireActual("../api/verification"),
+  fetchVerification: jest.fn(),
+}));
 jest.mock("expo-clipboard", () => ({ setStringAsync: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../utils/shareResource", () => ({ shareResource: jest.fn().mockResolvedValue("shared") }));
 jest.mock("../utils/stellarExpert", () => ({
@@ -38,6 +43,7 @@ jest.mock("../theme/ThemeProvider", () => {
 });
 
 const mockedFetchResource = fetchResource as jest.MockedFunction<typeof fetchResource>;
+const mockedFetchVerification = fetchVerification as jest.MockedFunction<typeof fetchVerification>;
 const mockedShareResource = shareResource as jest.MockedFunction<typeof shareResource>;
 const mockedOpenExternalUrl = openExternalUrl as jest.MockedFunction<typeof openExternalUrl>;
 
@@ -63,10 +69,31 @@ function renderScreen() {
   return render(<ResourceDetailScreen route={route} navigation={navigation} />);
 }
 
+/** A `GET /resources/:id/verification` response, as the server returns it. */
+function makeVerification(
+  overrides: Partial<VerificationDetails> = {}
+): VerificationDetails {
+  return {
+    resourceId: "resource-1",
+    title: "Doc",
+    status: "verified",
+    listed: true,
+    publishedAt: "2025-06-01T09:00:00.000Z",
+    verification: {
+      isOriginal: true,
+      confidence: 0.92,
+      flags: [],
+      checkedAt: "2025-06-15T12:30:00.000Z",
+    },
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockedShareResource.mockResolvedValue("shared");
   mockedOpenExternalUrl.mockResolvedValue(undefined);
+  mockedFetchVerification.mockResolvedValue(makeVerification());
 });
 
 it("shows a spinner while the resource is loading", () => {
@@ -135,3 +162,110 @@ it("shows a toast when opening Stellar Expert fails", async () => {
 
   expect(await screen.findByText("Unable to open explorer")).toBeTruthy();
 });
+
+describe("collapsible verification section", () => {
+  it("can be expanded and collapsed with accessibility attributes", async () => {
+    mockedFetchResource.mockResolvedValue(resource);
+    const screen = renderScreen();
+
+    await screen.findByText(resource.title);
+    const header = screen.getByLabelText("Verification");
+    expect(header.props.accessibilityState).toEqual({ expanded: false });
+    expect(screen.queryByLabelText("Verification details")).toBeNull();
+
+    fireEvent.press(header);
+    expect(header.props.accessibilityState).toEqual({ expanded: true });
+    expect(screen.getByLabelText("Verification details")).toBeTruthy();
+    // Let the first-expand fetch settle inside the test.
+    await screen.findByLabelText("Verification Status: verified");
+
+    fireEvent.press(header);
+    expect(header.props.accessibilityState).toEqual({ expanded: false });
+    expect(screen.queryByLabelText("Verification details")).toBeNull();
+  });
+
+  it("shows loading state when verification details are fetching", async () => {
+    mockedFetchResource.mockResolvedValue(resource);
+    mockedFetchVerification.mockReturnValue(new Promise(() => {}));
+    const screen = renderScreen();
+
+    await screen.findByText(resource.title);
+    fireEvent.press(screen.getByLabelText("Verification"));
+
+    expect(screen.getByLabelText("Loading verification details")).toBeTruthy();
+    expect(screen.getByText("Loading verification details…")).toBeTruthy();
+  });
+
+  it("renders status, originality, confidence, flags and the check time", async () => {
+    mockedFetchResource.mockResolvedValue(resource);
+    mockedFetchVerification.mockResolvedValue(
+      makeVerification({
+        verification: {
+          isOriginal: false,
+          confidence: 0.874,
+          flags: ["Similar to an existing resource"],
+          checkedAt: "2025-07-20T10:00:00.000Z",
+        },
+      })
+    );
+    const screen = renderScreen();
+
+    await screen.findByText(resource.title);
+    fireEvent.press(screen.getByLabelText("Verification"));
+
+    expect(await screen.findByLabelText("Verification Status: verified")).toBeTruthy();
+    expect(screen.getByText("Possible copy")).toBeTruthy();
+    expect(screen.getByText("87%")).toBeTruthy();
+    expect(screen.getByText("• Similar to an existing resource")).toBeTruthy();
+    expect(screen.getByText("Checked")).toBeTruthy();
+    expect(screen.getByText(/Jul.*2025/)).toBeTruthy();
+  });
+
+  it("says so when no AI check has run yet", async () => {
+    mockedFetchResource.mockResolvedValue(resource);
+    mockedFetchVerification.mockResolvedValue(
+      makeVerification({ status: "pending", verification: null })
+    );
+    const screen = renderScreen();
+
+    await screen.findByText(resource.title);
+    fireEvent.press(screen.getByLabelText("Verification"));
+
+    expect(await screen.findByLabelText("Verification Status: pending")).toBeTruthy();
+    expect(screen.getByText("No AI check has run for this resource yet.")).toBeTruthy();
+  });
+
+  it("only fetches verification once the section is first expanded", async () => {
+    mockedFetchResource.mockResolvedValue(resource);
+    const screen = renderScreen();
+
+    await screen.findByText(resource.title);
+    expect(mockedFetchVerification).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText("Verification"));
+    await screen.findByLabelText("Verification Status: verified");
+    fireEvent.press(screen.getByLabelText("Verification"));
+    fireEvent.press(screen.getByLabelText("Verification"));
+
+    expect(mockedFetchVerification).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows error state with retry button and retries successfully", async () => {
+    mockedFetchResource.mockResolvedValue(resource);
+    mockedFetchVerification
+      .mockRejectedValueOnce(new Error("Unable to reach verification service"))
+      .mockResolvedValueOnce(makeVerification());
+    const screen = renderScreen();
+
+    await screen.findByText(resource.title);
+    fireEvent.press(screen.getByLabelText("Verification"));
+
+    expect(await screen.findByText("Unable to reach verification service")).toBeTruthy();
+    const retryBtn = screen.getByLabelText("Retry loading verification");
+    fireEvent.press(retryBtn);
+
+    expect(await screen.findByLabelText("Verification Status: verified")).toBeTruthy();
+    expect(mockedFetchVerification).toHaveBeenCalledTimes(2);
+  });
+});
+
