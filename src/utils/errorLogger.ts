@@ -148,7 +148,15 @@ export function normalizeError(error: unknown): NormalizedError {
   }
 }
 
-let errorLog: Array<{ context: string; error: NormalizedError; timestamp: string }> = [];
+interface ErrorLogEntry {
+  context: string;
+  error: NormalizedError;
+  timestamp: string;
+}
+
+// Ring buffer of the last MAX_LOG_ENTRIES redacted errors, kept in memory only
+// so a user can attach them to a diagnostics report.
+let errorLog: ErrorLogEntry[] = [];
 
 const MAX_LOG_ENTRIES = 100;
 

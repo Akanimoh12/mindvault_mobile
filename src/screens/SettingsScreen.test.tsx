@@ -1,5 +1,6 @@
 import React from "react";
-import { render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { Share } from "react-native";
 import {
   NavigationContainer,
   createNavigationContainerRef,
@@ -82,5 +83,44 @@ describe("developer tools", () => {
     const { getByText } = await renderSettings();
     expect(getByText("Developer Options")).toBeTruthy();
     expect(await routeNames()).toContain("DevSigner");
+  });
+});
+
+describe("diagnostics", () => {
+  it("shows the report for review before sharing it", async () => {
+    const share = jest.spyOn(Share, "share").mockResolvedValue({ action: Share.sharedAction });
+    const screen = await renderSettings();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText("Share diagnostics"));
+    });
+
+    expect(screen.getByText("Review before sharing")).toBeTruthy();
+    expect(screen.getByLabelText("Diagnostics report").props.children).toContain(
+      "=== MindVault Diagnostics ==="
+    );
+    expect(share).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText("Share"));
+    });
+    expect(share).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("MindVault Diagnostics") })
+    );
+    share.mockRestore();
+  });
+
+  it("shares nothing when the preview is cancelled", async () => {
+    const share = jest.spyOn(Share, "share").mockResolvedValue({ action: Share.sharedAction });
+    const screen = await renderSettings();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText("Share diagnostics"));
+    });
+    fireEvent.press(screen.getByLabelText("Cancel"));
+
+    expect(screen.queryByText("Review before sharing")).toBeNull();
+    expect(share).not.toHaveBeenCalled();
+    share.mockRestore();
   });
 });

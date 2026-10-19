@@ -1,59 +1,71 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export interface DiagnosticsData {
-  timestamp: string;
+import { getApiBaseUrl } from "../api/resources";
+import { getApiKey } from "./secureStorage";
+import { getErrorLog } from "../utils/errorLogger";
+
+/** Support information a user can preview and share. Never contains secrets. */
+export interface DiagnosticsReport {
+  generatedAt: string;
   appVersion: string;
-  appBuildNumber: string;
   platform: string;
   osVersion: string;
   deviceModel: string;
-  environment: string;
+  environment: "development" | "production";
   apiBaseUrl: string;
+  network: string;
   hasApiKey: boolean;
-  logs: string[];
+  log: string;
 }
 
-export async function collectDiagnostics(): Promise<DiagnosticsData> {
-  const apiBaseUrl = await AsyncStorage.getItem("mindvault_api_base_url");
-  const hasApiKey = await AsyncStorage.getItem("mindvault_secure_api_key");
+function deviceModel(): string {
+  if (Platform.OS === "android") {
+    const { Manufacturer, Model } = Platform.constants as { Manufacturer?: string; Model?: string };
+    return [Manufacturer, Model].filter(Boolean).join(" ") || "Android device";
+  }
+  if (Platform.OS === "ios") {
+    return Platform.isPad ? "iPad" : "iPhone";
+  }
+  return Platform.OS;
+}
 
-  const diagnostics: DiagnosticsData = {
-    timestamp: new Date().toISOString(),
+async function hasStoredApiKey(): Promise<boolean> {
+  try {
+    return (await getApiKey()) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export async function collectDiagnostics(): Promise<DiagnosticsReport> {
+  return {
+    generatedAt: new Date().toISOString(),
     appVersion: Constants.expoConfig?.version ?? "unknown",
-    appBuildNumber: Constants.expoConfig?.ios?.buildNumber ?? Constants.expoConfig?.android?.versionCode ?? "unknown",
     platform: Platform.OS,
-    osVersion: Platform.Version.toString(),
-    deviceModel: Constants.expoConfig?.extra?.deviceModel ?? "unknown",
+    osVersion: String(Platform.Version),
+    deviceModel: deviceModel(),
     environment: __DEV__ ? "development" : "production",
-    apiBaseUrl: apiBaseUrl || "default",
-    hasApiKey: !!hasApiKey,
-    logs: [],
+    apiBaseUrl: getApiBaseUrl(),
+    network: String(Constants.expoConfig?.extra?.network ?? "unknown"),
+    hasApiKey: await hasStoredApiKey(),
+    log: getErrorLog(),
   };
-
-  return diagnostics;
 }
 
-export async function exportDiagnosticsAsJson(diagnostics: DiagnosticsData): Promise<string> {
-  return JSON.stringify(diagnostics, null, 2);
-}
-
-export function formatDiagnosticsAsText(diagnostics: DiagnosticsData): string {
-  const lines = [
+export function formatDiagnostics(report: DiagnosticsReport): string {
+  return [
     "=== MindVault Diagnostics ===",
-    `Timestamp: ${diagnostics.timestamp}`,
-    `App Version: ${diagnostics.appVersion}`,
-    `Build Number: ${diagnostics.appBuildNumber}`,
-    `Platform: ${diagnostics.platform}`,
-    `OS Version: ${diagnostics.osVersion}`,
-    `Device Model: ${diagnostics.deviceModel}`,
-    `Environment: ${diagnostics.environment}`,
-    `API Base URL: ${diagnostics.apiBaseUrl}`,
-    `Has API Key: ${diagnostics.hasApiKey}`,
+    `Generated: ${report.generatedAt}`,
+    `App version: ${report.appVersion}`,
+    `Platform: ${report.platform} ${report.osVersion}`,
+    `Device: ${report.deviceModel}`,
+    `Environment: ${report.environment}`,
+    `API: ${report.apiBaseUrl}`,
+    `Network: ${report.network}`,
+    `API key stored: ${report.hasApiKey ? "yes" : "no"}`,
     "",
-    "Please include this information when reporting issues.",
-  ];
-
-  return lines.join("\n");
+    "=== Recent errors (redacted) ===",
+    report.log || "None",
+  ].join("\n");
 }

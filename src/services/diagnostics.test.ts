@@ -1,117 +1,64 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform } from "react-native";
-import {
-  collectDiagnostics,
-  exportDiagnosticsAsJson,
-  formatDiagnosticsAsText,
-  type DiagnosticsData,
-} from "./diagnostics";
+import { collectDiagnostics, formatDiagnostics } from "./diagnostics";
+import { getApiBaseUrl } from "../api/resources";
+import { getApiKey } from "./secureStorage";
+import { clearErrorLog, logError } from "../utils/errorLogger";
 
-jest.mock("@react-native-async-storage/async-storage");
-jest.mock("react-native");
-jest.mock("expo-constants", () => ({
-  expoConfig: {
-    version: "1.0.0",
-    ios: { buildNumber: "42" },
-    android: { versionCode: "42" },
-    extra: { deviceModel: "iPhone14" },
-  },
-}));
+jest.mock("./secureStorage", () => ({ getApiKey: jest.fn() }));
 
-const mockAsyncStorage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
-const mockPlatform = Platform as jest.Mocked<typeof Platform>;
+const mockGetApiKey = getApiKey as jest.MockedFunction<typeof getApiKey>;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockPlatform.OS = "ios";
-  mockPlatform.Version = 17 as any;
+  clearErrorLog();
+  jest.spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 describe("collectDiagnostics", () => {
-  it("collects all diagnostic information", async () => {
-    mockAsyncStorage.getItem.mockResolvedValueOnce("http://localhost:4021");
-    mockAsyncStorage.getItem.mockResolvedValueOnce("test-key");
+  it("reports app, platform and API details, and whether a key is stored", async () => {
+    mockGetApiKey.mockResolvedValue("publisher-key");
 
-    const diagnostics = await collectDiagnostics();
+    const report = await collectDiagnostics();
 
-    expect(diagnostics).toEqual({
-      timestamp: expect.any(String),
-      appVersion: "1.0.0",
-      appBuildNumber: "42",
-      platform: "ios",
-      osVersion: "17",
-      deviceModel: "iPhone14",
+    expect(report).toMatchObject({
+      platform: expect.any(String),
+      osVersion: expect.any(String),
+      deviceModel: expect.any(String),
       environment: __DEV__ ? "development" : "production",
-      apiBaseUrl: "http://localhost:4021",
+      apiBaseUrl: getApiBaseUrl(),
       hasApiKey: true,
-      logs: [],
     });
+    expect(JSON.stringify(report)).not.toContain("publisher-key");
   });
 
-  it("handles missing API key", async () => {
-    mockAsyncStorage.getItem.mockResolvedValueOnce("http://localhost:4021");
-    mockAsyncStorage.getItem.mockResolvedValueOnce(null);
+  it("reports no key when none is stored or SecureStore fails", async () => {
+    mockGetApiKey.mockResolvedValueOnce(null);
+    expect((await collectDiagnostics()).hasApiKey).toBe(false);
 
-    const diagnostics = await collectDiagnostics();
-
-    expect(diagnostics.hasApiKey).toBe(false);
-  });
-
-  it("uses default values when AsyncStorage returns null", async () => {
-    mockAsyncStorage.getItem.mockResolvedValue(null);
-
-    const diagnostics = await collectDiagnostics();
-
-    expect(diagnostics.apiBaseUrl).toBe("default");
-    expect(diagnostics.hasApiKey).toBe(false);
+    mockGetApiKey.mockRejectedValueOnce(new Error("keychain locked"));
+    expect((await collectDiagnostics()).hasApiKey).toBe(false);
   });
 });
 
-describe("exportDiagnosticsAsJson", () => {
-  it("converts diagnostics to JSON string", async () => {
-    const diagnostics: DiagnosticsData = {
-      timestamp: "2024-01-01T00:00:00Z",
-      appVersion: "1.0.0",
-      appBuildNumber: "42",
-      platform: "ios",
-      osVersion: "17",
-      deviceModel: "iPhone14",
-      environment: "production",
-      apiBaseUrl: "http://localhost:4021",
-      hasApiKey: true,
-      logs: [],
-    };
+describe("formatDiagnostics", () => {
+  it("includes recent errors with secrets redacted", async () => {
+    mockGetApiKey.mockResolvedValue(null);
+    const secretSeed = `S${"A".repeat(55)}`;
+    logError("publisher.save", new Error(`Request failed for apiKey=sk_live_topsecret seed ${secretSeed}`));
 
-    const json = await exportDiagnosticsAsJson(diagnostics);
-    const parsed = JSON.parse(json);
+    const text = formatDiagnostics(await collectDiagnostics());
 
-    expect(parsed).toEqual(diagnostics);
-    expect(json).toContain('"timestamp"');
-    expect(json).toContain('"appVersion"');
+    expect(text).toContain("=== Recent errors (redacted) ===");
+    expect(text).toContain("publisher.save");
+    expect(text).not.toContain("sk_live_topsecret");
+    expect(text).not.toContain(secretSeed);
   });
-});
 
-describe("formatDiagnosticsAsText", () => {
-  it("formats diagnostics as readable text", () => {
-    const diagnostics: DiagnosticsData = {
-      timestamp: "2024-01-01T00:00:00Z",
-      appVersion: "1.0.0",
-      appBuildNumber: "42",
-      platform: "ios",
-      osVersion: "17",
-      deviceModel: "iPhone14",
-      environment: "production",
-      apiBaseUrl: "http://localhost:4021",
-      hasApiKey: true,
-      logs: [],
-    };
-
-    const text = formatDiagnosticsAsText(diagnostics);
-
-    expect(text).toContain("=== MindVault Diagnostics ===");
-    expect(text).toContain("App Version: 1.0.0");
-    expect(text).toContain("Platform: ios");
-    expect(text).toContain("Has API Key: true");
-    expect(text).toContain("Please include this information when reporting issues.");
+  it("says None when there are no recent errors", async () => {
+    mockGetApiKey.mockResolvedValue(null);
+    expect(formatDiagnostics(await collectDiagnostics())).toMatch(/Recent errors \(redacted\) ===\nNone$/);
   });
 });

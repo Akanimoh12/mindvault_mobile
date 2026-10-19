@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Modal,
   Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -22,12 +23,7 @@ import {
   validateApiBaseUrl,
 } from "../api/apiSettings";
 import { initializeApiBaseUrl } from "../api/resources";
-import {
-  collectDiagnostics,
-  exportDiagnosticsAsJson,
-  formatDiagnosticsAsText,
-} from "../services/diagnostics";
-import { getErrorLog } from "../utils/errorLogger";
+import { collectDiagnostics, formatDiagnostics } from "../services/diagnostics";
 
 export function SettingsScreen() {
   const { colors, shared } = useAppTheme();
@@ -92,21 +88,24 @@ export function SettingsScreen() {
   const isDefault =
     apiUrl.trim() === getDefaultApiBaseUrl() && savedUrl === getDefaultApiBaseUrl();
 
-  const handleExportDiagnostics = async () => {
-    try {
-      const diagnostics = await collectDiagnostics();
-      const diagnosticsText = formatDiagnosticsAsText(diagnostics);
-      const errorLog = getErrorLog();
-      const fullReport = errorLog
-        ? `${diagnosticsText}\n\n=== Error Log ===\n${errorLog}`
-        : diagnosticsText;
+  // The report is shown in full before anything leaves the device.
+  const [diagnosticsPreview, setDiagnosticsPreview] = useState<string | null>(null);
 
-      await Share.share({
-        message: fullReport,
-        title: "MindVault Diagnostics",
-      });
+  const handlePreviewDiagnostics = async () => {
+    try {
+      setDiagnosticsPreview(formatDiagnostics(await collectDiagnostics()));
     } catch {
-      Alert.alert("Error", "Failed to export diagnostics");
+      Alert.alert("Error", "Failed to collect diagnostics");
+    }
+  };
+
+  const handleShareDiagnostics = async () => {
+    if (!diagnosticsPreview) return;
+    try {
+      await Share.share({ message: diagnosticsPreview, title: "MindVault Diagnostics" });
+      setDiagnosticsPreview(null);
+    } catch {
+      Alert.alert("Error", "Failed to share diagnostics");
     }
   };
 
@@ -233,13 +232,56 @@ export function SettingsScreen() {
           </Text>
           <TouchableOpacity
             style={[shared.button, { backgroundColor: colors.primary }]}
-            onPress={handleExportDiagnostics}
+            onPress={() => void handlePreviewDiagnostics()}
             accessibilityRole="button"
-            accessibilityLabel="Export diagnostics"
+            accessibilityLabel="Share diagnostics"
+            accessibilityHint="Shows the report so you can review it before sharing"
           >
-            <Text style={[shared.buttonText, { color: "#ffffff" }]}>Export Diagnostics</Text>
+            <Text style={[shared.buttonText, { color: "#ffffff" }]}>Share Diagnostics</Text>
           </TouchableOpacity>
         </View>
+
+        <Modal
+          visible={diagnosticsPreview !== null}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setDiagnosticsPreview(null)}
+        >
+          <View style={styles.previewOverlay}>
+            <View style={[styles.previewSheet, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.title, { fontSize: 16, color: colors.text }]}>
+                Review before sharing
+              </Text>
+              <ScrollView style={styles.previewBody}>
+                <Text
+                  selectable
+                  style={[styles.previewText, { color: colors.text }]}
+                  accessibilityLabel="Diagnostics report"
+                >
+                  {diagnosticsPreview}
+                </Text>
+              </ScrollView>
+              <View style={styles.previewActions}>
+                <TouchableOpacity
+                  style={[shared.button, styles.previewButton, { backgroundColor: colors.neutralBg }]}
+                  onPress={() => setDiagnosticsPreview(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={[shared.buttonText, { color: colors.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[shared.button, styles.previewButton, { backgroundColor: colors.primary }]}
+                  onPress={() => void handleShareDiagnostics()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share"
+                >
+                  <Text style={[shared.buttonText, { color: "#ffffff" }]}>Share</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {__DEV__ ? (
           <View style={[styles.infoCard, { backgroundColor: colors.warningBg, marginTop: 16 }]}>
@@ -289,6 +331,34 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  previewOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  previewSheet: {
+    maxHeight: "80%",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 32,
+    gap: 12,
+  },
+  previewBody: {
+    flexGrow: 0,
+  },
+  previewText: {
+    fontFamily: "monospace",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  previewActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  previewButton: {
+    flex: 1,
   },
   sectionTitle: {
     fontSize: 16,
